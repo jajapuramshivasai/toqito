@@ -8,9 +8,8 @@ import cvxpy
 Symbol = namedtuple("Symbol", ["player", "question", "answer"], defaults=["", None, None])
 
 
-# This function simplifies the input word by applying
-# the commutation and projector rules.
 def _reduce(word: tuple[Symbol]) -> tuple[Symbol]:
+    """Simplifies the input word by applying commutation and projector rules."""
     # commute: bring Alice in front.
     w_a, w_b = (), ()
     for symbol in word:
@@ -18,8 +17,8 @@ def _reduce(word: tuple[Symbol]) -> tuple[Symbol]:
             w_a += (symbol,)
         if symbol.player == "Bob":
             w_b += (symbol,)
-
     word = w_a + w_b
+
     for i in range(len(word) - 1):
         symbol_x, symbol_y = word[i], word[i + 1]
 
@@ -39,13 +38,13 @@ def _reduce(word: tuple[Symbol]) -> tuple[Symbol]:
 
 
 def _parse(k: str) -> tuple[int, set[tuple[int, int]]]:
+    """Parse string representation of hierarchy level."""
     k = k.split("+")
     base_k = int(k[0])
-
     conf = set()
+
     for val in k[1:]:
-        # otherwise we already take this configuration
-        # in base_k - level of hierarchy.
+        # otherwise we already take this configuration in base_k - level of hierarchy.
         if len(val) > base_k:
             cnt_a, cnt_b = 0, 0
             for bit in val:
@@ -53,22 +52,20 @@ def _parse(k: str) -> tuple[int, set[tuple[int, int]]]:
                     cnt_a += 1
                 if bit == "b":
                     cnt_b += 1
-
             conf.add((cnt_a, cnt_b))
 
     return base_k, conf
 
 
-# This function generates all non - equivalent words of length up to k.
 def _gen_words(k: int | str, a_out: int, a_in: int, b_out: int, b_in: int) -> list[tuple[Symbol]]:
-    # remove one outcome to avoid redundancy
-    # since all projectors sum to identity.
+    """Generate all non-equivalent words of length up to k."""
+    # remove one outcome to avoid redundancy since all projectors sum to identity.
     b_symbols = [Symbol("Bob", y, b) for y in range(b_in) for b in range(b_out - 1)]
     a_symbols = [Symbol("Alice", x, a) for x in range(a_in) for a in range(a_out - 1)]
 
-    words = [(Symbol(""),)]
-
+    words = [tuple()]  # Start with empty word (identity)
     conf = []
+
     if isinstance(k, str):
         k, conf = _parse(k)
 
@@ -79,7 +76,7 @@ def _gen_words(k: int | str, a_out: int, a_in: int, b_out: int, b_in: int) -> li
                 if len(_reduce(word_a)) == j:
                     for word_b in product(b_symbols, repeat=i - j):
                         if len(_reduce(word_b)) == i - j:
-                            words += [word_a + word_b]
+                            words.append(word_a + word_b)
 
     # now generate the intermediate levels of hierarchy
     for cnt_a, cnt_b in conf:
@@ -87,30 +84,33 @@ def _gen_words(k: int | str, a_out: int, a_in: int, b_out: int, b_in: int) -> li
             if len(_reduce(word_a)) == cnt_a:
                 for word_b in product(b_symbols, repeat=cnt_b):
                     if len(_reduce(word_b)) == cnt_b:
-                        words += [word_a + word_b]
+                        words.append(word_a + word_b)
 
     return words
 
 
 def _is_zero(word: tuple[Symbol]) -> bool:
+    """Check if word evaluates to zero."""
     return len(word) == 0
 
 
 def _is_meas(word: tuple[Symbol]) -> bool:
+    """Check if word is a two-party measurement."""
     if len(word) == 2:
         s_a, s_b = word
         return s_a.player == "Alice" and s_b.player == "Bob"
-
     return False
 
 
 def _is_meas_on_one_player(word: tuple[Symbol]) -> bool:
+    """Check if word is a single-party measurement."""
     return len(word) == 1 and word[0].player in {"Alice", "Bob"}
 
 
 def _get_nonlocal_game_params(
     assemblage: dict[tuple[int, int], cvxpy.Variable], referee_dim: int = 1
 ) -> tuple[int, int, int, int]:
+    """Extract game parameters from assemblage."""
     a_in, b_in = max(assemblage.keys())
     a_in = a_in + 1
     b_in = b_in + 1
@@ -153,16 +153,17 @@ def npa_constraints(
 
     """
     a_out, a_in, b_out, b_in = _get_nonlocal_game_params(assemblage, referee_dim)
-
     words = _gen_words(k, a_out, a_in, b_out, b_in)
     dim = len(words)
 
     r_var = cvxpy.Variable((referee_dim * dim, referee_dim * dim), hermitian=True, name="R")
+
     # Normalization.
     norm = sum(r_var[i * dim, i * dim] for i in range(referee_dim))
     constraints = [norm == 1, r_var >> 0]
 
     seen = {}
+
     for i in range(dim):
         for j in range(i, dim):
             w_i, w_j = words[i], words[j]
@@ -170,6 +171,7 @@ def npa_constraints(
             word = _reduce(w_i + w_j)
 
             sub_mat = r_var[i::dim, j::dim]
+
             # if i = 0 we would consider (ε, ε) as an empty word.
             if i != 0 and _is_zero(word):
                 constraints.append(sub_mat == 0)
@@ -194,7 +196,6 @@ def npa_constraints(
                         ]
                         for b_ans in range(b_out)
                     )
-
                     constraints.append(sub_mat == sum_all_bob_meas)
 
                 if symbol.player == "Bob":
@@ -205,7 +206,6 @@ def npa_constraints(
                         ]
                         for a_ans in range(a_out)
                     )
-
                     constraints.append(sub_mat == sum_all_alice_meas)
 
             elif word in seen:
@@ -216,7 +216,7 @@ def npa_constraints(
             else:
                 seen[word] = (i, j)
 
-    # now we impose constraints to the assemblage operator
+    # Impose constraints to the assemblage operator
     for x_alice_in in range(a_in):
         for y_bob_in in range(b_in):
             sum_all_meas_and_trace = 0
@@ -227,7 +227,7 @@ def npa_constraints(
                         for i in range(referee_dim)
                     )
 
-                    # r x r sub - block is PSD since it's an unnormalized quantum state.
+                    # Each sub-block is PSD since it's an unnormalized quantum state.
                     constraints.append(
                         assemblage[x_alice_in, y_bob_in][
                             a_ans * referee_dim : (a_ans + 1) * referee_dim,
@@ -257,7 +257,6 @@ def npa_constraints(
                     ]
                     for a_ans in range(a_out)
                 )
-
                 constraints.append(sum_first_question == sum_cur_question)
 
     # Alice marginal consistency
@@ -279,7 +278,6 @@ def npa_constraints(
                     ]
                     for b_ans in range(b_out)
                 )
-
                 constraints.append(sum_first_question == sum_cur_question)
 
     return constraints
