@@ -8,8 +8,9 @@ import cvxpy
 Symbol = namedtuple("Symbol", ["player", "question", "answer"], defaults=["", None, None])
 
 
+# This function simplifies the input word by applying
+# the commutation and projector rules.
 def _reduce(word: tuple[Symbol]) -> tuple[Symbol]:
-    """Simplifies the input word by applying commutation and projector rules."""
     # commute: bring Alice in front.
     w_a, w_b = (), ()
     for symbol in word:
@@ -38,7 +39,6 @@ def _reduce(word: tuple[Symbol]) -> tuple[Symbol]:
 
 
 def _parse(k: str) -> tuple[int, set[tuple[int, int]]]:
-    """Parse string representation of hierarchy level."""
     k = k.split("+")
     base_k = int(k[0])
     conf = set()
@@ -58,12 +58,11 @@ def _parse(k: str) -> tuple[int, set[tuple[int, int]]]:
 
 
 def _gen_words(k: int | str, a_out: int, a_in: int, b_out: int, b_in: int) -> list[tuple[Symbol]]:
-    """Generate all non-equivalent words of length up to k."""
     # remove one outcome to avoid redundancy since all projectors sum to identity.
     b_symbols = [Symbol("Bob", y, b) for y in range(b_in) for b in range(b_out - 1)]
     a_symbols = [Symbol("Alice", x, a) for x in range(a_in) for a in range(a_out - 1)]
 
-    words = [tuple()]  # Start with empty word (identity)
+    words = [tuple()]
     conf = []
 
     if isinstance(k, str):
@@ -90,12 +89,10 @@ def _gen_words(k: int | str, a_out: int, a_in: int, b_out: int, b_in: int) -> li
 
 
 def _is_zero(word: tuple[Symbol]) -> bool:
-    """Check if word evaluates to zero."""
     return len(word) == 0
 
 
 def _is_meas(word: tuple[Symbol]) -> bool:
-    """Check if word is a two-party measurement."""
     if len(word) == 2:
         s_a, s_b = word
         return s_a.player == "Alice" and s_b.player == "Bob"
@@ -103,14 +100,12 @@ def _is_meas(word: tuple[Symbol]) -> bool:
 
 
 def _is_meas_on_one_player(word: tuple[Symbol]) -> bool:
-    """Check if word is a single-party measurement."""
     return len(word) == 1 and word[0].player in {"Alice", "Bob"}
 
 
 def _get_nonlocal_game_params(
     assemblage: dict[tuple[int, int], cvxpy.Variable], referee_dim: int = 1
 ) -> tuple[int, int, int, int]:
-    """Extract game parameters from assemblage."""
     a_in, b_in = max(assemblage.keys())
     a_in = a_in + 1
     b_in = b_in + 1
